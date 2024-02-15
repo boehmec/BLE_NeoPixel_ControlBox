@@ -1,8 +1,13 @@
 ### This is a small project for underground LED for my electric mountainboard.
+
 Use e.g. NRF connect on your phone to send the commands to the published BLE service.
-Search for the device with name "BLE NeoPixel Board Control". Connect 
+Search for the device with name "BLE NeoPixel Board Control". Connect.
 
 You can use it also for other stuff.
+
+## VSCode vs Arduino
+
+I startetd coding with Arduino IDE but found it to be very cumbersome the bigger the projects get. Thats why I switch more and more projects I make over to VSCode.
 
 ## 3D files to print
 
@@ -73,4 +78,6 @@ You can send 10 different commands to the control box, see below:
 | ESP32-C3  | https://de.aliexpress.com/item/1005006170575141.html |
 | 5V Mini-Step-Up-Boost | https://de.aliexpress.com/item/1005006144998899.html  |
 | LiPo Charger Circuit | https://de.aliexpress.com/item/1005005865606098.html |
+| LiIon Holder | https://de.aliexpress.com/item/32825161070.html |
+| Power Switch Self Locking 16mm| https://de.aliexpress.com/item/1005002509687799.html |
 
