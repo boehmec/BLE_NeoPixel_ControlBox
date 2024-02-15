@@ -78,4 +78,5 @@ You can send 10 different commands to the control box, see below:
 | ESP32-C3  | https://de.aliexpress.com/item/1005006170575141.html |
 | 5V Mini-Step-Up-Boost | https://de.aliexpress.com/item/1005006144998899.html  |
 | LiPo Charger Circuit | https://de.aliexpress.com/item/1005005865606098.html |
+| LiIon Holder | https://de.aliexpress.com/item/32825161070.html |
 
