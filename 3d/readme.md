@@ -1,6 +1,6 @@
 ## Print instructions
 
-the btm part prints in ~ 1h:45m
+the btm part prints in ~ 1h:30m
   
 the top part prints in ~ 0h:45m
 
