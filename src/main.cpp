@@ -62,12 +62,35 @@ void colorWipe(uint32_t color, int wait) {
 }
 
 class BLEServerCallback : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) {
+  void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) {
     log_i("Connected %d", pServer->getConnId());
+    // prepare for updating params
+    esp_bd_addr_t clientAddress;
+    memcpy(clientAddress, param->connect.remote_bda, ESP_BD_ADDR_LEN);
+    esp_gatt_conn_params_t gattConnParams = param->connect.conn_params; 
+    log_i("gattConnParams timeout %d interval %d latency %d" , gattConnParams.timeout, gattConnParams.interval, gattConnParams.latency);
+    esp_gap_conn_params_t connParams; 
+    ////supervision_tout  Range: 0x000A to 0x0C80 Time = N * 10 msec Time Range: 100 msec to 32 seconds
+    esp_ble_get_current_conn_params(clientAddress, &connParams); 
+    log_i("connParams timeout %d interval %d latency %d" , connParams.timeout, connParams.interval, connParams.latency);
+    
+    esp_ble_conn_update_params_t updatedConnParams;
+    memcpy(updatedConnParams.bda, clientAddress, ESP_BD_ADDR_LEN);
+    // updatedConnParams.bda = clientAddress; 
+    updatedConnParams.min_int = 0x06; // x 1.25ms
+    updatedConnParams.max_int = 0x20; // x 1.25ms
+    updatedConnParams.latency = 0x00; //number of skippable connection events
+    updatedConnParams.timeout = 0x00C8; // x 200ms x 10ms = 2000ms time before peripheral will assume connection is dropped.
+
+    esp_err_t updateRes = esp_ble_gap_update_conn_params(&updatedConnParams);
+    log_i("connParams updateRes %d" , updateRes);
+    esp_ble_get_current_conn_params(clientAddress, &connParams); ////supervision_tout  Range: 0x000A to 0x0C80 Time = N * 10 msec Time Range: 100 msec to 32 seconds
+    log_i("connParams timeout %d interval %d latency %d" , connParams.timeout, connParams.interval, connParams.latency);
+
     deviceConnected = true;
     colorWipe(strip.Color(0, 255, 0), 20);
     BLEDevice::startAdvertising();
-  };
+  }
 
   void onDisconnect(BLEServer *pServer) {
     log_i("Disconnected %d", pServer->getConnId());
@@ -165,15 +188,10 @@ class LiveBrightnessCallback : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     uint8_t *data = pCharacteristic->getData();
     int brightness = *data;
-    if (brightness >= maxBrightness) {
-      brightness = maxBrightness;
-    }
-    // prevent turning off led
-    if (brightness <= 1) {
-      brightness = 1;
-    }
-
-    strip.setBrightness(brightness);
+    // we allow a 0 brightness, effectively turning it off
+    // as the client can control the color
+    int adjustedBrightness = map(brightness, 0, 255, 0, maxBrightness); 
+    strip.setBrightness(adjustedBrightness);
     strip.show();
   }
 };
