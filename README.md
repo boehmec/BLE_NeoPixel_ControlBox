@@ -30,6 +30,11 @@ You can send 10 different commands to the control box, see below:
 - 8: max brightness brighter
 - 9: reset to default
 
+## LIVE Mode
+
+There is a BLE Characteristic you can write to that accepts integer values 0 - 255 for brightness control.
+0 effectively turns the LEDs completely off.
+This can be useful for e.g. throttle/ brake animation or sound control.
 
 ## Schematic
 
