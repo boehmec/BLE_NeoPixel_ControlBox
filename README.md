@@ -1,5 +1,7 @@
 ### This is a small project for underground LED for my electric mountainboard.
 
+See https://github.com/boehmec/esk8-remote-sender
+
 Use e.g. NRF connect on your phone to send the commands to the published BLE service.
 Search for the device with name "BLE NeoPixel Board Control". Connect.
 
