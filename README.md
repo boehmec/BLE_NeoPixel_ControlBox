@@ -38,6 +38,9 @@ There is a BLE Characteristic you can write to that accepts integer values 0 - 2
 0 effectively turns the LEDs completely off.
 This can be useful for e.g. throttle/ brake animation or sound control.
 
+See here https://github.com/boehmec/esk8-remote-sender/blob/f7f75f4035cb45c6e086482c0af7b64ef2a55e34/include/LEDControlHandler.h#L219
+for an implementation.
+
 ## Schematic
 
     +------------------------+
