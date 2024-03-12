@@ -1,9 +1,10 @@
-#include <Adafruit_NeoPixel.h>
+// #include <Adafruit_NeoPixel.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BlockNot.h>
 #include <ArduinoJson.h>
+#include <FastLED.h>
 
 /**
   General Commands: 0-9
@@ -21,9 +22,13 @@
   Live brightness:
   - send a value 0-255 to LIVE_BRIGHTNESS_CHARACTERISTIC_UUID (sanity checks like maxBrightness apply)
   - this can easily get expanded to sound control feature
+
+  Color Picker
+  - send payload as JSON {r: "100", g: "200", b: "255"} for Color(100, 200,255)
+
 */
-#define LEDS 30
-#define PIN 4
+#define NUM_LEDS 1
+#define DATA_PIN 4
 // our power switch has an onboard LED we can power with our ESP alone
 #define BTN_VCC_PIN 5
 #define BTN_GND_PIN 6
@@ -37,7 +42,8 @@
 #define MAX_COMMAND_NR 10
 const int MAX_MTU = 350;
 
-Adafruit_NeoPixel strip(LEDS, PIN, NEO_GRB + NEO_KHZ800);
+// CRGB leds[NUM_LEDS];
+CRGBArray<NUM_LEDS> leds;
 
 BLEServer *pServer = NULL;
 BLECharacteristic *commandsCharacteristic = NULL;
@@ -58,10 +64,10 @@ BlockNot bleTimer = BlockNot(1500, STOPPED);
 BlockNot pulseTimer(currentPulseDuration, STOPPED); 
 
 // from default examples, just sets new color for each led
-void colorWipe(uint32_t color, int wait) {
-  for (int i = 0; i < strip.numPixels(); i++) {
-    strip.setPixelColor(i, color);
-    strip.show();
+void colorWipe(CRGB color, int wait) {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    leds[i] = color;
+    FastLED.show();
     delay(wait);
   }
 }
@@ -77,7 +83,7 @@ void enablePulse(int duration) {
 
 class BLEServerCallback : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) {
-    log_i("Connected %d", pServer->getConnId());
+    log_i("Connected %d on core %d", pServer->getConnId(), xPortGetCoreID());
     // prepare for updating params
     esp_bd_addr_t clientAddress;
     memcpy(clientAddress, param->connect.remote_bda, ESP_BD_ADDR_LEN);
@@ -114,7 +120,7 @@ class BLEServerCallback : public BLEServerCallbacks {
     pulseTimer.STOP;
     deviceConnected = true;
     brightness = DEFAULT_MAX_BRIGHTNESS;
-    colorWipe(strip.Color(0, 255, 0), 20); //green
+    colorWipe(CRGB::Green, 20); //green
   }
 
   void onDisconnect(BLEServer *pServer) {
@@ -122,8 +128,8 @@ class BLEServerCallback : public BLEServerCallbacks {
     deviceConnected = false;
     pulseTimer.STOP;
     bleTimer.START_RESET;
-    strip.setBrightness(DEFAULT_MAX_BRIGHTNESS);
-    colorWipe(strip.Color(255, 0, 0), 20); //red
+    FastLED.setBrightness(DEFAULT_MAX_BRIGHTNESS);
+    colorWipe(CRGB::Red, 20); //red
     enablePulse(DEFAULT_PULSE_DURATION); // set pulse
   }
 };
@@ -141,13 +147,13 @@ class CommandsCallback : public BLECharacteristicCallbacks {
 
     switch (command) {
     case 0:
-      colorWipe(strip.Color(255, 0, 0), 0); // Red
+      colorWipe(CRGB::Red, 0); // Red
       break;
     case 1:
-      colorWipe(strip.Color(0, 255, 0), 0); // Green
+      colorWipe(CRGB::Green, 0); // Green
       break;
     case 2:
-      colorWipe(strip.Color(0, 0, 255), 0); // Blue
+      colorWipe(CRGB::Blue, 0); // Blue
       break;
     case 3: // make pulse faster
       currentPulseDuration -= 10;
@@ -168,16 +174,16 @@ class CommandsCallback : public BLECharacteristicCallbacks {
       if (brightness <= 0) {
         brightness = 0;
       }
-      strip.setBrightness(brightness); // 0 ..255
-      strip.show();                    // Update strip with new contents
+      FastLED.setBrightness(brightness); // 0 ..255
+      FastLED.show();                    // Update strip with new contents
       break;
     case 6: // current brightness brighter
       brightness += 20;
       if (brightness >= maxBrightness) {
         brightness = maxBrightness;
       }
-      strip.setBrightness(brightness); // 0 ..255
-      strip.show();                    // Update strip with new contents
+      FastLED.setBrightness(brightness); // 0 ..255
+      FastLED.show();                    // Update strip with new contents
       break;
     case 7: // max brightness darker
       maxBrightness -= 20;
@@ -197,7 +203,7 @@ class CommandsCallback : public BLECharacteristicCallbacks {
       maxBrightness = DEFAULT_MAX_BRIGHTNESS;
       brightness = DEFAULT_MAX_BRIGHTNESS;
       currentPulseDuration = DEFAULT_PULSE_DURATION;
-      strip.show();
+      FastLED.show();
       break;
     }
   }
@@ -225,8 +231,8 @@ class LiveBrightnessCallback : public BLECharacteristicCallbacks {
       adjustedBrightness = 1;
     }
     log_d("brightness %d -> adjustedBrightness %d", brightness, adjustedBrightness);
-    strip.setBrightness(adjustedBrightness);
-    strip.show();
+    FastLED.setBrightness(adjustedBrightness);
+    FastLED.show();
   }
 };
 
@@ -246,13 +252,14 @@ class ColorCallback : public BLECharacteristicCallbacks {
     int green = jsonDoc["g"];
     int blue = jsonDoc["b"];
     log_i("Change color to R %d G %d B %d", red, green, blue);
-    colorWipe(strip.Color(red, green, blue), 0); //no delay
+    colorWipe(CRGB(red, green, blue), 0); //no delay
   }
 
 };
 
 void setup() {
   log_i("BLE NeoPixel LED Box Controller");
+
   BLEDevice::init("BLE NeoPixel Board Control");
   BLEDevice::setMTU(MAX_MTU);
   esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P9);
@@ -278,30 +285,32 @@ void setup() {
   colorCharacteristic = pService->createCharacteristic(COLOR_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
   colorCharacteristic->setCallbacks(new ColorCallback());
 
-
   pService->start();
 
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(
-      true); // TRUE otherwise our remote cannot find it
+  pAdvertising->setScanResponse(true); // TRUE otherwise our remote cannot find it
   pAdvertising->setMinPreferred(0x0);
   BLEDevice::startAdvertising();
 
-  strip.begin();
-  strip.setBrightness(DEFAULT_MAX_BRIGHTNESS); // 0 ..255
-  colorWipe(strip.Color(255, 0, 0), 20); //red
-  enablePulse(DEFAULT_PULSE_DURATION); // set pulse
-  strip.show();
-
-  pinMode(PIN, OUTPUT);
-  digitalWrite(PIN, LOW);
+  // pinMode(DATA_PIN, OUTPUT);
+  // digitalWrite(DATA_PIN, LOW);
 
   // btn led light
   pinMode(BTN_VCC_PIN, OUTPUT);
   pinMode(BTN_GND_PIN, OUTPUT);
   digitalWrite(BTN_VCC_PIN, HIGH); // btn led is on when esp gets energy, so its default high
   digitalWrite(BTN_GND_PIN, LOW);
+
+
+  // Adafruit_NeoPixel strip(LEDS, PIN, NEO_GRB + NEO_KHZ800);
+  FastLED.addLeds<WS2811, DATA_PIN, GRB>(leds, NUM_LEDS);   // GRB ordering is assumed
+  FastLED.delay(1000);
+  FastLED.clear(true);
+  FastLED.setBrightness(DEFAULT_MAX_BRIGHTNESS); // 0 ..255
+  colorWipe(CRGB::Red, 20); //red
+  // leds.fadeLightBy(0.3f);
+  // enablePulse(DEFAULT_PULSE_DURATION); // set pulse
 }
 
 void handlePulsing() {
@@ -320,10 +329,9 @@ void handlePulsing() {
       }
     }
 
-    // strip.getPixelColor
-    // log_i("Brightness %d", brightness);
-    strip.setBrightness(brightness); // 0 ..255
-    strip.show();                    // Update strip with new contents
+    log_i("Brightness %d", brightness);
+    FastLED.setBrightness(brightness); // 0 ..255
+    FastLED.show();                    // Update strip with new contents
   }
 }
 
@@ -332,7 +340,7 @@ void handleClient() {
 }
 
 void loop() {
-  handlePulsing(); 
+  // handlePulsing(); 
   if (deviceConnected) {
     handleClient();
   }
