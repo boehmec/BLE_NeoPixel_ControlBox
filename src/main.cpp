@@ -3,6 +3,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BlockNot.h>
+#include <ArduinoJson.h>
 
 /**
   General Commands: 0-9
@@ -21,25 +22,27 @@
   - send a value 0-255 to LIVE_BRIGHTNESS_CHARACTERISTIC_UUID (sanity checks like maxBrightness apply)
   - this can easily get expanded to sound control feature
 */
-
+#define LEDS 30
 #define PIN 4
 // our power switch has an onboard LED we can power with our ESP alone
 #define BTN_VCC_PIN 5
 #define BTN_GND_PIN 6
 #define SERVICE_UUID "68a3891c-3667-4937-b89b-f69479854ae7"
 #define COMMAND_CHARACTERISTIC_UUID "284c702d-3609-4939-bd2a-7f88a7d383f8"
-#define LIVE_BRIGHTNESS_CHARACTERISTIC_UUID                                    \
-  "39cdb833-ad1b-442f-8845-715d69e27614"
+#define LIVE_BRIGHTNESS_CHARACTERISTIC_UUID "39cdb833-ad1b-442f-8845-715d69e27614"
+#define COLOR_CHARACTERISTIC_UUID "0c092dce-abcf-4681-b649-cbbeb7cff702"
 
 #define DEFAULT_MAX_BRIGHTNESS 90
 #define DEFAULT_PULSE_DURATION 40
+#define MAX_COMMAND_NR 10
 const int MAX_MTU = 350;
 
-Adafruit_NeoPixel strip(30, PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(LEDS, PIN, NEO_GRB + NEO_KHZ800);
 
 BLEServer *pServer = NULL;
 BLECharacteristic *commandsCharacteristic = NULL;
 BLECharacteristic *liveBrightnessCharacteristic = NULL;
+BLECharacteristic *colorCharacteristic = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
@@ -63,7 +66,9 @@ void colorWipe(uint32_t color, int wait) {
   }
 }
 
+//works only when using either R G B as 255 int, not lower values
 void enablePulse(int duration) {
+log_i("Set pulse duration %d", duration);
   pulseTimer.setDuration(duration);
   if (pulseTimer.isStopped()) {
     pulseTimer.START_RESET;
@@ -106,10 +111,10 @@ class BLEServerCallback : public BLEServerCallbacks {
     log_d("connParams timeout %d interval %d latency %d", connParams.timeout,
           connParams.interval, connParams.latency);
 
-    deviceConnected = true;
-    colorWipe(strip.Color(0, 255, 0), 20); //green
     pulseTimer.STOP;
-    BLEDevice::startAdvertising();
+    deviceConnected = true;
+    brightness = DEFAULT_MAX_BRIGHTNESS;
+    colorWipe(strip.Color(0, 255, 0), 20); //green
   }
 
   void onDisconnect(BLEServer *pServer) {
@@ -128,7 +133,7 @@ class CommandsCallback : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     uint8_t *data = pCharacteristic->getData();
     int command = *data;
-    if (command < 0 || command > 9) {
+    if (command < 0 || command > MAX_COMMAND_NR) {
       log_w("Unknown command!");
       return;
     }
@@ -189,9 +194,9 @@ class CommandsCallback : public BLECharacteristicCallbacks {
     case 9: // reset to default
       // stop all pulse
       pulseTimer.STOP;
-      maxBrightness = 100;
-      brightness = 100;
-      currentPulseDuration = 50;
+      maxBrightness = DEFAULT_MAX_BRIGHTNESS;
+      brightness = DEFAULT_MAX_BRIGHTNESS;
+      currentPulseDuration = DEFAULT_PULSE_DURATION;
       strip.show();
       break;
     }
@@ -225,6 +230,27 @@ class LiveBrightnessCallback : public BLECharacteristicCallbacks {
   }
 };
 
+class ColorCallback : public BLECharacteristicCallbacks {
+
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    std::string json = pCharacteristic->getValue();
+     JsonDocument jsonDoc;
+    DeserializationError error = deserializeJson(jsonDoc, json);
+    // Test if parsing succeeds.
+    if (error) {
+      log_e("DeserializeJson() failed: %s - \njson %s", error.f_str()), json.c_str();
+      return;
+    }
+
+    int red = jsonDoc["r"];
+    int green = jsonDoc["g"];
+    int blue = jsonDoc["b"];
+    log_i("Change color to R %d G %d B %d", red, green, blue);
+    colorWipe(strip.Color(red, green, blue), 0); //no delay
+  }
+
+};
+
 void setup() {
   log_i("BLE NeoPixel LED Box Controller");
   BLEDevice::init("BLE NeoPixel Board Control");
@@ -242,13 +268,16 @@ void setup() {
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new BLEServerCallback());
   BLEService *pService = pServer->createService(SERVICE_UUID);
-  commandsCharacteristic = pService->createCharacteristic(
-      COMMAND_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
+  commandsCharacteristic = pService->createCharacteristic(COMMAND_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
   commandsCharacteristic->setCallbacks(new CommandsCallback());
 
-  liveBrightnessCharacteristic = pService->createCharacteristic(
-      LIVE_BRIGHTNESS_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
+  liveBrightnessCharacteristic = pService->createCharacteristic(LIVE_BRIGHTNESS_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
   liveBrightnessCharacteristic->setCallbacks(new LiveBrightnessCallback());
+
+  
+  colorCharacteristic = pService->createCharacteristic(COLOR_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
+  colorCharacteristic->setCallbacks(new ColorCallback());
+
 
   pService->start();
 
@@ -285,8 +314,7 @@ void handlePulsing() {
       }
     } else {
       brightness--;
-      if (brightness <=
-          1) { // 0 would be off and color info is lost, so set min to 1
+      if (brightness <= 1) { // 0 would be off and color info is lost, so set min to 1
         brightness = 1;
         turnBrightnessUp = true;
       }
